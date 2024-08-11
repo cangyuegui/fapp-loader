@@ -4,6 +4,8 @@
 #include <iostream>
 #include <cstring>
 #include <sys/stat.h>
+#include <vector>
+#include <algorithm>
 #include "cJSON.h"
 
 int is_directory(const char *path) {
@@ -60,6 +62,36 @@ char* get_exe_section(const char *json_content, const char* section) {
     return exe_content;
 }
 
+std::vector<std::string> parseEnvVars(const std::string& jsonString) {
+    std::vector<std::string> envVarsList;
+
+    // Parse the JSON string
+    cJSON* json = cJSON_Parse(jsonString.c_str());
+    if (json == nullptr) {
+        std::cerr << "Error parsing JSON" << std::endl;
+        return envVarsList;
+    }
+
+    // Get the 'env_vars' section
+    cJSON* envVars = cJSON_GetObjectItemCaseSensitive(json, "env_vars");
+    if (cJSON_IsArray(envVars)) {
+        // Iterate through the array
+        cJSON* item = nullptr;
+        cJSON_ArrayForEach(item, envVars) {
+            if (cJSON_IsString(item) && (item->valuestring != nullptr)) {
+                envVarsList.push_back(item->valuestring);
+            }
+        }
+    } else {
+        std::cerr << "'env_vars' section not found or is not an array" << std::endl;
+    }
+
+    // Clean up
+    cJSON_Delete(json);
+
+    return envVarsList;
+}
+
 // Function to count the number of environment variables
 size_t count_envp(char *const envp[]) {
     size_t count = 0;
@@ -107,6 +139,22 @@ char **combine_envp(char *const custom_envp[]) {
     new_envp[i] = NULL;
 
     return new_envp;
+}
+
+// Function to replace all occurrences of a substring with another substring
+void replaceAll(std::string& str, const std::string& from, const std::string& to) {
+    size_t start_pos = 0;
+    while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
+        str.replace(start_pos, from.length(), to);
+        start_pos += to.length(); // Move past the replaced part
+    }
+}
+
+// Function to parse and replace occurrences of {ROOT_DIR} in the vector
+void processEnvVars(std::vector<std::string>& envVars, const std::string& replacement) {
+    for (auto& envVar : envVars) {
+        replaceAll(envVar, "{ROOT_DIR}", replacement);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -197,9 +245,15 @@ int main(int argc, char *argv[])
 
     printf("Exe section content: %s\n", exe_content);
 
-    char *custom_envp[] = {
-            NULL
-        };
+    std::vector<std::string> env_vars = parseEnvVars(json_content);
+    processEnvVars(env_vars, fapp_path);
+
+    char *custom_envp[env_vars.size() + 1];
+    for (size_t i = 0; i < env_vars.size(); ++i)
+        custom_envp[i] = (char*)(env_vars[i].c_str());
+
+    custom_envp[env_vars.size()] = nullptr;
+
     char **new_envp = combine_envp(custom_envp);
     size_t count_envp_s = count_envp(new_envp);
 
@@ -216,7 +270,7 @@ int main(int argc, char *argv[])
     }
 
     for (int i = 0; i < count_envp_s; ++i) {
-        printf("%s\n", new_envp[i]);
+        std::cout << new_envp[i] << std::endl;
     }
 
     char** nargv = new char*[argc - 1];
