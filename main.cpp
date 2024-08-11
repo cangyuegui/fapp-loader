@@ -1,8 +1,8 @@
-#include "widget.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <iostream>
+#include <cstring>
 #include <sys/stat.h>
 #include "cJSON.h"
 
